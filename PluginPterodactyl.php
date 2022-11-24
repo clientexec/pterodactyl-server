@@ -234,7 +234,12 @@ class PluginPterodactyl extends ServerPlugin
             $response = $this->api($args, 'users?filter[email]=' . urlencode($args['customer']['email']));
             if ($response['meta']['pagination']['total'] == 0) {
                 if ($args['server']['variables']['plugin_pterodactyl_Username_Custom_Field'] != '') {
-                    $username = $args['server']['variables']['plugin_pterodactyl_Username_Custom_Field'];
+                    $username = $userPackage->getCustomField(
+                        $args['server']['variables']['plugin_pterodactyl_Username_Custom_Field'],
+                        CUSTOM_FIELDS_FOR_PACKAGE
+                    );
+
+                    $args['server']['variables']['plugin_pterodactyl_Username_Custom_Field'];
                 } else {
                     $username = CE_Lib::generateUsername();
                     $userPackage->setCustomField($args['server']['variables']['plugin_pterodactyl_Username_Custom_Field'], $username, CUSTOM_FIELDS_FOR_PACKAGE);
