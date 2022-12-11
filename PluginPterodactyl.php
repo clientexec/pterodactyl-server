@@ -44,6 +44,11 @@ class PluginPterodactyl extends ServerPlugin
                 'description' => 'Enter the name of the package custom field that will hold the username.',
                 'value'       => ''
             ],
+            'Password Custom Field' => [
+                "type" => 'text',
+                'description' => 'Enter the name of the package custom field that will hold the password.',
+                'value' => ''
+            ],
             'Actions' => [
                 'type' => 'hidden',
                 'description' => 'Current actions that are active for this plugin per server',
@@ -246,6 +251,10 @@ class PluginPterodactyl extends ServerPlugin
                 }
                 $response = $this->api($args, 'users', [
                     'username' => $username,
+                    'password' => $userPackage->getCustomField(
+                        $args['server']['variables']['plugin_pterodactyl_Password_Custom_Field'],
+                        CUSTOM_FIELDS_FOR_PACKAGE
+                    ),
                     'email' => $args['customer']['email'],
                     'first_name' => $args['customer']['first_name'],
                     'last_name' => $args['customer']['last_name'],
@@ -276,7 +285,7 @@ class PluginPterodactyl extends ServerPlugin
         }
 
         $data = [
-            'name' => $args['package']['id'],
+            'name' => $args['package']['name'] . " - ID #" . $args['package']['id'],
             'user' => $userId,
             'nest' => $nestId,
             'egg' => $eggId,
