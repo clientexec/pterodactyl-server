@@ -2,7 +2,6 @@
 
 class PluginPterodactyl extends ServerPlugin
 {
-
     public $features = [
         'packageName' => false,
         'testConnection' => true,
@@ -10,6 +9,7 @@ class PluginPterodactyl extends ServerPlugin
         'directlink' => true,
         'upgrades' => false
     ];
+
     public function getVariables()
     {
         $variables = [
@@ -42,6 +42,11 @@ class PluginPterodactyl extends ServerPlugin
             'Username Custom Field' => [
                 "type" => 'text',
                 'description' => 'Enter the name of the package custom field that will hold the username.',
+                'value'       => ''
+            ],
+            'Server Hostname Custom Field' => [
+                "type" => 'text',
+                'description' => 'Enter the name of the package custom field that will hold the server hostname.',
                 'value'       => ''
             ],
             'Actions' => [
@@ -252,15 +257,22 @@ class PluginPterodactyl extends ServerPlugin
                     'external_id' => $args['customer']['id'],
 
                 ], 'POST');
-                $userId = $response['attributes']['id'];
+                if ($userResult['status_code'] === 200 || $userResult['status_code'] === 201) {
+                    $userId = $response['attributes']['id'];
+                } else {
+                    throw new CE_Exception($response['errors'][0]['detail']);
+                }
             } else {
                 $userId = $response['data'][0]['attributes']['id'];
             }
         } else {
             $userId = $response['attributes']['id'];
         }
-        $nestId = $args['package']['variables']['nest_id'];
-        $eggId = $args['package']['variables']['egg_id'];
+        $nestId = $this->getOption($args, 'nest_id', $args['package']['variables']['nest_id']);
+
+
+
+        $eggId = $this->getOption($args, 'egg_id', $args['package']['variables']['egg_id']);
 
         $eggData = $this->api($args, 'nests/' . $nestId . '/eggs/' . $eggId . '?include=variables');
         $environment = [];
@@ -275,29 +287,41 @@ class PluginPterodactyl extends ServerPlugin
             $locationId = $userPackage->getCustomField($args['server']['variables']['plugin_pterodactyl_Location_Custom_Field'], CUSTOM_FIELDS_FOR_PACKAGE);
         }
 
+        $serverName = '';
+        if ($args['server']['variables']['plugin_pterodactyl_Server_Hostname_Custom_Field'] != '') {
+            $serverName =  $userPackage->getCustomField(
+                $args['server']['variables']['plugin_pterodactyl_Server_Hostname_Custom_Field'],
+                CUSTOM_FIELDS_FOR_PACKAGE
+            );
+        }
+
+        if ($serverName == '') {
+            $serverName = $args['package']['id'];
+        }
+
         $data = [
-            'name' => $args['package']['id'],
+            'name' => $serverName,
             'user' => $userId,
             'nest' => $nestId,
             'egg' => $eggId,
-            'docker_image' => $eggData['attributes']['docker_image'],
-            'startup' => $eggData['attributes']['startup'],
-            'oom_disabled' => $args['package']['variables']['disable_oom'],
+            'docker_image' => $this->getOption($args, 'docker_image', $eggData['attributes']['docker_image']),
+            'startup' => $this->getOption($args, 'startup', $eggData['attributes']['startup']),
+            'oom_disabled' => $this->getOption($args, 'disable_oom', $args['package']['variables']['disable_oom']),
             'limits' => [
-                'memory' => $args['package']['variables']['memory'],
-                'swap' => $args['package']['variables']['swap'],
-                'io' => $args['package']['variables']['io'],
-                'cpu' => $args['package']['variables']['cpu'],
-                'disk' => $args['package']['variables']['disk'],
+                'memory' => $this->getOption($args, 'memory', $args['package']['variables']['memory']),
+                'swap' => $this->getOption($args, 'swap', $args['package']['variables']['swap']),
+                'io' => $this->getOption($args, 'io', $args['package']['variables']['io']),
+                'cpu' => $this->getOption($args, 'cpu', $args['package']['variables']['cpu']),
+                'disk' => $this->getOption($args, 'disk', $args['package']['variables']['disk']),
             ],
             'feature_limits' => [
-                'databases' => $args['package']['variables']['databases'],
-                'allocations' => $args['package']['variables']['allocations'],
-                'backups' => $args['package']['variables']['backups'],
+                'databases' => $this->getOption($args, 'databases', $args['package']['variables']['databases']),
+                'allocations' => $this->getOption($args, 'allocations', $args['package']['variables']['allocations']),
+                'backups' => $this->getOption($args, 'backups', $args['package']['variables']['backups']),
             ],
             'deploy' => [
                 'locations' => [$locationId],
-                'dedicated_ip' => $args['package']['variables']['dedicated_ip'],
+                'dedicated_ip' => $this->getOption($args, 'dedicated_ip', $args['package']['variables']['dedicated_ip']),
                 'port_range' => [],
             ],
             'environment' => $environment,
@@ -309,6 +333,25 @@ class PluginPterodactyl extends ServerPlugin
         if ($server['statusCode'] != 204 && $server['statusCode'] != 201) {
             $this->handleError($server);
         }
+    }
+
+    private function getOption($args, $id, $default = null)
+    {
+        $variables = $this->getVariables();
+        $friendlyName = $variables['package_vars_values']['value'][$id]['label'];
+
+        if ($variables['package_vars_values']['value'][$id]['value'] != '') {
+            return $variables['package_vars_values']['value'][$id]['value'];
+        } elseif ($args['package']['addons']['CUSTOM_' . $id] != '') {
+            return $args['package']['addons']['CUSTOM_' . $id];
+        } elseif ($args['package']['addons']['CUSTOM_' . $friendlyName] != '') {
+            return $args['package']['addons']['CUSTOM_' . $friendlyName];
+        } elseif ($args['package']['customfields'][$id]['value'] != '') {
+            return $args['package']['customfields'][$id]['value'];
+        } elseif ($args['package']['customfields'][$friendlyName]['value'] != '') {
+            return $args['package']['customfields'][$friendlyName]['value'];
+        }
+        return $default;
     }
 
     public function testConnection($args)
@@ -362,7 +405,10 @@ class PluginPterodactyl extends ServerPlugin
         } else {
             curl_setopt($ch, CURLOPT_CAINFO, $caPathOrFile);
         }
-        CE_Lib::log(4, "Pterodactyl Request to: $url");
+        CE_Lib::log(4, "Pterodactyl $method Request to: $url");
+        if (count($data) > 0) {
+            CE_Lib::log(4, $data);
+        }
 
         $headers = [
             "Authorization: Bearer " . $params['server']['variables']['plugin_pterodactyl_API_Key'],
@@ -385,6 +431,7 @@ class PluginPterodactyl extends ServerPlugin
             throw new CE_Exception(curl_error($ch));
         }
         curl_close($ch);
+        CE_Lib::log(4, $response);
         return $response;
     }
 
@@ -432,17 +479,20 @@ class PluginPterodactyl extends ServerPlugin
             ];
         } elseif ($getRealLink) {
             return array(
-                'link'    => '<li><a target="_blank" href="' . $url . '">' . $linkText . '</a></li>',
-                'rawlink' =>  $url,
-                'form'    => ''
+                'fa' => 'fa fa-user fa-fw',
+                'link' => $url,
+                'text' =>  $linkText,
+                'form' => ''
             );
         } else {
             $link = 'index.php?fuse=clients&controller=products&action=openpackagedirectlink&packageId=' . $userPackage->getId() . '&sessionHash=' . CE_Lib::getSessionHash();
 
-            return array(
-                'link' => '<li><a target="_blank" href="' . $url .  '">' . $linkText . '</a></li>',
+            return [
+                'fa' => 'fa fa-user fa-fw',
+                'link' => $link,
+                'text' => $linkText,
                 'form' => ''
-            );
+            ];
         }
     }
 
