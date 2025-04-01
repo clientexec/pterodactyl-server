@@ -257,7 +257,7 @@ class PluginPterodactyl extends ServerPlugin
                     'external_id' => $args['customer']['id'],
 
                 ], 'POST');
-                if ($userResult['status_code'] === 200 || $userResult['status_code'] === 201) {
+                if ($response['statusCode'] === 200 || $response['statusCode'] === 201) {
                     $userId = $response['attributes']['id'];
                 } else {
                     throw new CE_Exception($response['errors'][0]['detail']);
@@ -500,6 +500,6 @@ class PluginPterodactyl extends ServerPlugin
     {
         $userPackage = new UserPackage($args['userPackageId']);
         $response = $this->getDirectLink($userPackage);
-        return $response['rawlink'];
+        return $response['link'];
     }
 }
